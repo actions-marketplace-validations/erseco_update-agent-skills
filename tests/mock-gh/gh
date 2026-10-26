@@ -9,7 +9,8 @@
 #                          a skill without one is up to date
 #   MOCK_GH_LOG            every `gh skill update` call is appended here
 #   MOCK_GH_FAIL=N         the first N update calls fail (counted in $MOCK_GH_LOG)
-#   MOCK_GH_FAIL_MODE      `exit` (non-zero status, default) or `skip` (`! Skipping`, exit 0)
+#   MOCK_GH_FAIL_MODE      `exit` (non-zero status, default), `skip` (`! Skipping`, exit 0) or
+#                          `layout` (upstream publishes no skill where gh looks, exit 0)
 #   MOCK_GH_ECHO           extra text printed by every update call
 set -euo pipefail
 
@@ -45,6 +46,12 @@ if [[ -n "${MOCK_GH_ECHO:-}" ]]; then echo "$MOCK_GH_ECHO" >&2; fi
 
 calls=$(grep -c '^update ' "$log" 2>/dev/null || true)
 if ((${calls:-0} <= ${MOCK_GH_FAIL:-0})); then
+  if [[ "${MOCK_GH_FAIL_MODE:-}" == layout ]]; then
+    echo "! Skipping demo: no skills found in owner/repo" >&2
+    echo "  Expected skills in skills/*/SKILL.md, skills/{scope}/*/SKILL.md," >&2
+    echo "All skills are up to date." >&2
+    exit 0
+  fi
   if [[ "${MOCK_GH_FAIL_MODE:-exit}" == skip ]]; then
     echo "! Skipping demo: could not resolve owner/repo: HTTP 401: Bad credentials" >&2
     echo "All skills are up to date." >&2

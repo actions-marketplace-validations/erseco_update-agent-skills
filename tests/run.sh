@@ -348,6 +348,15 @@ t_unresolved_upstream_fails() {
   assert_calls 2
   assert_contains "$stdout" "::error::Skipping demo: could not resolve owner/repo: HTTP 401: Bad credentials"
 }
+t_upstream_without_discoverable_skills_warns() {
+  # The upstream repository no longer publishes the skill where gh looks; retrying cannot help.
+  skill "$ws/s/a"
+  run INPUT_DIR=s MOCK_GH_FAIL=99 MOCK_GH_FAIL_MODE=layout
+  assert_status 0
+  assert_calls 1
+  assert_contains "$stdout" "::warning::Skipping demo: no skills found in owner/repo"
+  assert_not_contains "$stdout" "::error::"
+}
 t_one_root_fails_others_continue() {
   skill "$ws/p/x/skills/a"
   skill "$ws/p/y/skills/b"

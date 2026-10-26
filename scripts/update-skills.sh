@@ -153,6 +153,10 @@ if [[ "$unpin" == true ]]; then flags+=(--unpin); fi
 
 # gh exits 0 even when it cannot reach a skill's upstream (bad token, missing repository, network
 # error); it reports those as `! Skipping <skill>: ...`. Treat them as failures and retry them.
+# `no skills found in <repo>` is the exception: the upstream publishes the skill outside the paths
+# gh discovers, so a retry cannot help and the skill is reported as skipped instead.
+failures() { grep '^! Skipping ' | grep -v '^! Skipping [^:]*: no skills found in ' || true; }
+
 update_root() { # <root>
   local n out rc line
   for ((n = 1; ; n++)); do
@@ -162,16 +166,17 @@ update_root() { # <root>
     out=$(printf '%s\n' "$out" | tr '\r' '\n' | sed -e $'s/\x1B\\[[0-9;]*[A-Za-z]//g' -e '/^[[:space:]]*$/d')
     print_untrusted "$out"
     printf '%s\n' "$out" >>"$summary"
-    if ((rc == 0)) && ! grep -q '^! Skipping ' <<<"$out"; then break; fi
+    if ((rc == 0)) && [[ -z "$(failures <<<"$out")" ]]; then break; fi
     if ((n >= attempts)); then
       if ((rc != 0)); then error "'gh skill update' exited with status $rc for '$(rel "$1")'."; fi
-      while IFS= read -r line; do error "${line#! }"; done < <(grep '^! Skipping ' <<<"$out" || true)
+      while IFS= read -r line; do error "${line#! }"; done < <(failures <<<"$out")
       return 1
     fi
     echo "::warning::'gh skill update' failed for '$(rel "$1")' (attempt $n/$attempts); retrying in $((delay * n))s."
     sleep $((delay * n))
   done
-  # Remaining `!` notices are skills gh deliberately skipped, such as ones without GitHub metadata.
+  # Remaining `!` notices are skills gh deliberately skipped: no GitHub metadata, or an upstream
+  # that no longer publishes them where gh looks. They are never updated, so make them visible.
   while IFS= read -r line; do
     echo "::warning::$(escape "${line#! }")"
   done < <(grep '^! ' <<<"$out" || true)

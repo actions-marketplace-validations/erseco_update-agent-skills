@@ -171,6 +171,12 @@ metadata:
   deleted repository, a network error and invalid frontmatter. `gh` itself exits successfully
   in these cases, so this action reads its `! Skipping …` notices to avoid reporting a broken
   update as "up to date".
+- A skill whose upstream repository **no longer publishes it where `gh` looks** is skipped with a
+  warning. `gh` reports this as `no skills found in <repo>`. It only discovers
+  `skills/*/SKILL.md`, `skills/{scope}/*/SKILL.md`, `*/SKILL.md` and
+  `plugins/*/skills/*/SKILL.md`, so a skill installed from a path such as `.agents/skills/<skill>`
+  can never be updated. Retrying cannot fix that, so the run does not fail, but the skill stays
+  at its installed version until the upstream publishes it in a discoverable path.
 - An update replaces the whole skill directory with the upstream content. Files you added
   locally inside a skill directory are removed.
 
