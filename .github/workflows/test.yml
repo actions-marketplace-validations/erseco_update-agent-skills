@@ -1,0 +1,127 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate action metadata
+        run: |
+          yq -e '
+            .name == "Update Agent Skills by erseco" and
+            .author == "erseco" and
+            .branding.icon == "refresh-cw" and .branding.color == "blue" and
+            .runs.using == "composite" and
+            (.inputs | keys | sort) == ["dir", "dry-run", "gh-version", "github-token", "unpin"] and
+            (.outputs | keys | sort) == ["changed", "updated-skills"]
+          ' action.yml
+
+      - name: ShellCheck
+        run: shellcheck -x scripts/*.sh tests/run.sh tests/mock-gh/gh
+
+      - name: actionlint
+        run: |
+          # Installed through the Go module proxy, which verifies the module against the checksum database.
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" -color
+
+  unit:
+    name: Unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: bash tests/run.sh
+
+  integration:
+    # Exercises the action through `uses: ./` with the runner's real GitHub CLI and network access.
+    name: Integration (real gh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install a fixture skill
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh --version
+          gh skill install github/awesome-copilot documentation-writer --dir .test-skills/skills
+          mkdir -p .test-skills/empty
+
+      - name: No skills installed
+        id: empty
+        uses: ./
+        with:
+          dir: .test-skills/empty
+
+      - name: Up to date
+        id: current
+        uses: ./
+        with:
+          dir: .test-skills
+
+      - name: Make the fixture stale
+        run: |
+          sed -i 's/github-tree-sha: .*/github-tree-sha: 0000000000000000000000000000000000000000/' \
+            .test-skills/skills/documentation-writer/SKILL.md
+          echo local > .test-skills/skills/documentation-writer/local.txt
+
+      - name: Dry run
+        id: dry
+        uses: ./
+        with:
+          dir: .test-skills
+          dry-run: "true"
+
+      - name: Update
+        id: update
+        uses: ./
+        with:
+          dir: .test-skills
+
+      - name: Check outputs
+        env:
+          EMPTY: ${{ steps.empty.outputs.changed }}
+          EMPTY_SUMMARY: ${{ steps.empty.outputs.updated-skills }}
+          CURRENT: ${{ steps.current.outputs.changed }}
+          DRY: ${{ steps.dry.outputs.changed }}
+          DRY_SUMMARY: ${{ steps.dry.outputs.updated-skills }}
+          CHANGED: ${{ steps.update.outputs.changed }}
+          SUMMARY: ${{ steps.update.outputs.updated-skills }}
+        run: |
+          set -x
+          test "$EMPTY" = false
+          test "$EMPTY_SUMMARY" = "No installed skills found."
+          test "$CURRENT" = false
+          test "$DRY" = false
+          grep -q "update(s) available" <<<"$DRY_SUMMARY"
+          test "$CHANGED" = true
+          grep -q "Updated documentation-writer" <<<"$SUMMARY"
+          test ! -e .test-skills/skills/documentation-writer/local.txt
+          # Nothing outside the skill directory changed.
+          test -z "$(git status --porcelain --ignored -- . ':!.test-skills')"

@@ -1,0 +1,50 @@
+name: Update Agent Skills by erseco
+description: Update installed AI agent skills from their upstream GitHub repositories.
+author: erseco
+branding:
+  icon: refresh-cw
+  color: blue
+
+inputs:
+  dir:
+    description: Root directory containing installed skills. Every directory under it that holds a SKILL.md is treated as an installed skill.
+    required: false
+    default: "."
+  dry-run:
+    description: When `true`, report available updates without modifying files.
+    required: false
+    default: "false"
+  unpin:
+    description: When `true`, clear pins and update pinned skills too.
+    required: false
+    default: "false"
+  gh-version:
+    description: Minimum required GitHub CLI version (must provide `gh skill`).
+    required: false
+    default: "2.90.0"
+  github-token:
+    description: Token exposed to the GitHub CLI as `GH_TOKEN`.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  changed:
+    description: "`true` when any file in an installed skill directory was added, removed or modified (content, executable bit or symlink target), otherwise `false`."
+    value: ${{ steps.update.outputs.changed }}
+  updated-skills:
+    description: Readable summary of the `gh skill update` operations.
+    value: ${{ steps.update.outputs.updated-skills }}
+
+runs:
+  using: composite
+  steps:
+    - name: Update agent skills
+      id: update
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+        INPUT_UNPIN: ${{ inputs.unpin }}
+        INPUT_GH_VERSION: ${{ inputs.gh-version }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/update-skills.sh"
