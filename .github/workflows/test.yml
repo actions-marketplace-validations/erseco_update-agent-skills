@@ -30,8 +30,8 @@ jobs:
             .author == "erseco" and
             .branding.icon == "refresh-cw" and .branding.color == "blue" and
             .runs.using == "composite" and
-            (.inputs | keys | sort) == ["dir", "dry-run", "gh-version", "github-token", "unpin"] and
-            (.outputs | keys | sort) == ["changed", "updated-skills"]
+            (.inputs | keys | sort | join(",")) == "dir,dry-run,gh-version,github-token,unpin" and
+            (.outputs | keys | sort | join(",")) == "changed,updated-skills"
           ' action.yml
 
       - name: ShellCheck
